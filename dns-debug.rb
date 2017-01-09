@@ -23,20 +23,100 @@ def main
 	if args.nil?
 		return false
 	end
-	p args
+
+	id = 0
+	question = create_question(args[:hostname], id)
+	if question.nil?
+		puts "unable to create question"
+		return false
+	end
+
+
+	puts "Sending question message:"
+
+	print_bytes(question)
+
+	q = parse_message(question)
+	if q.nil?
+		puts "unable to parse message"
+		return false
+	end
+
+	print_message(q)
+
 
 	sock = UDPSocket.new
 	sock.connect args[:ip], 53
+	n = sock.send question, 0
+
+	puts "Sent #{n} bytes"
+	puts ""
 
 
-	# Construct question message. See RFC 1035 section 4 for format.
+	resp = sock.recv(1024)
+	puts "Received #{resp.length} bytes"
 
+
+	puts "Received message:"
+
+	print_bytes(resp)
+
+	r = parse_message(resp)
+	if r.nil?
+		puts "unable to parse message"
+		return false
+	end
+
+	print_message(r)
+
+	return true
+end
+
+# Retrieve command line arguments.
+def get_args
+	args = {}
+
+	opt = OptionParser.new do |opts|
+		opts.banner = "Usage: " + $0 + " [options]"
+
+		opts.on("-h", "--help", "Print this help") do
+			puts opts
+			return nil
+		end
+
+		opts.on("-iIP", "--ip=IP", "IP of DNS server to query.") do |i|
+			args[:ip] = i
+		end
+
+		opts.on("-nHOSTNAME", "--name=HOSTNAME", "Hostname to look up (A).") do |n|
+			args[:hostname] = n
+		end
+	end
+
+	opt.parse!
+
+	if !args.has_key?(:ip) || !args.has_key?(:hostname)
+		puts opt
+		return nil
+	end
+
+	return args
+end
+
+# Construct question message. See RFC 1035 section 4 for format.
+#
+# This always creates an IN A question currently.
+#
+# Return a byte string on success, or nil on failure.
+def create_question(name, id)
+	if id >= 2**16
+		puts "id is too large"
+		return nil
+	end
 
 	# Header section
 
 	# ID: 16 bits
-	id = 0
-
 
 	# QR: 1 bit. 0 for query.
 	qr = 0
@@ -102,10 +182,10 @@ def main
 	# Question section.
 
 	# Qname
-	qname = name_to_labels(args[:hostname])
+	qname = name_to_labels(name)
 	if qname.nil?
-		puts "unable to convert given hostname to labels (#{args[:hostname]})"
-		return 0
+		puts "unable to convert given hostname to labels (#{name})"
+		return nil
 	end
 
 	msg += qname
@@ -126,74 +206,7 @@ def main
 
 	msg += question_fields.pack('nn')
 
-
-	puts "Sending message:"
-	s = ""
-	msg.bytes.map { |b| s += sprintf("0x%02x", b) + " " }
-	puts s
-
-	m = parse_message(msg)
-	if m.nil?
-		puts "unable to parse message"
-		return 0
-	end
-
-	print_message(m)
-
-
-	n = sock.send msg, 0
-	puts "Sent #{n} bytes"
-
-
-	puts ""
-
-	resp = sock.recv(1024)
-	puts "Received #{resp.length} bytes"
-	puts "Received message:"
-	s = ""
-	resp.bytes.map { |b| s += sprintf("0x%02x", b) + " " }
-	puts s
-
-	m = parse_message(resp)
-	if m.nil?
-		puts "unable to parse message"
-		return 0
-	end
-
-	print_message(m)
-
-	return 1
-end
-
-# Retrieve command line arguments.
-def get_args
-	args = {}
-
-	opt = OptionParser.new do |opts|
-		opts.banner = "Usage: " + $0 + " [options]"
-
-		opts.on("-h", "--help", "Print this help") do
-			puts opts
-			return nil
-		end
-
-		opts.on("-iIP", "--ip=IP", "IP of DNS server to query.") do |i|
-			args[:ip] = i
-		end
-
-		opts.on("-nHOSTNAME", "--name=HOSTNAME", "Hostname to look up (A).") do |n|
-			args[:hostname] = n
-		end
-	end
-
-	opt.parse!
-
-	if !args.has_key?(:ip) || !args.has_key?(:hostname)
-		puts opt
-		return nil
-	end
-
-	return args
+	return msg
 end
 
 # Convert a domain name (hostname) into a sequence of labels.
@@ -231,6 +244,13 @@ def name_to_labels(name)
 	end
 
 	return sequence
+end
+
+# Print out string's bytes as hex octets.
+def print_bytes(s)
+	out = ""
+	s.bytes.map { |b| out += sprintf("0x%02x", b) + " " }
+	puts out
 end
 
 # Take DNS message and parse it into its parts.
