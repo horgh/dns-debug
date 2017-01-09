@@ -1,3 +1,20 @@
+#
+# This program is for debugging DNS server responses.
+#
+# It constructs a DNS question message manually and then send it via UDP to a
+# given DNS server. It then reads and parses the response and dumps out
+# everything about it.
+#
+# My use case is to determine what is going on with a device's DNS server where
+# I have little insight into what the device is doing. I see periodic errors
+# that I cannot explain, and I want to try to rule out bugs in DNS libraries,
+# or at least get very low level to try to better understand what is happening.
+#
+# I write it in Ruby for practice in the language rather than anything else.
+#
+# My basis/specification is RFC 1035.
+#
+
 require 'optparse'
 require 'socket'
 
@@ -61,20 +78,7 @@ def main
 	arcount = 0
 
 
-	# Question section.
-
-	# Qname
-	domain_name = "icanhazip.com"
-	#qname = name_to_label(domain_name)
-
-	# Qtype. 16 bits. Type of RR. 1 is A
-	qtype = 1
-
-	# Qclass. 16 bits. Query class. 1 is internet.
-	qclass = 1
-
-
-	fields = [
+	header_fields = [
 		# 16 bits
 		id,
 		# 8 bits
@@ -90,21 +94,37 @@ def main
 		nscount,
 		# 16 bits
 		arcount,
+	]
 
-		# qname
-		9,
-		"icanhazip",
-		3,
-		"com",
-		0,
+	msg = header_fields.pack('nCCnnnn')
 
+
+	# Question section.
+
+	# Qname
+	qname = name_to_labels(args[:hostname])
+	if qname.nil?
+		puts "unable to convert given hostname to labels (#{args[:hostname]})"
+		return 0
+	end
+
+	msg += qname
+
+	# Qtype. 16 bits. Type of RR. 1 is A
+	qtype = 1
+
+	# Qclass. 16 bits. Query class. 1 is internet.
+	qclass = 1
+
+
+	question_fields = [
 		# 16 bits
 		qtype,
 		# 16 bits
 		qclass
 	]
 
-	msg = fields.pack('nCCnnnnCA9CA3Cnn')
+	msg += question_fields.pack('nn')
 
 
 	puts "Sending message:"
@@ -174,6 +194,43 @@ def get_args
 	end
 
 	return args
+end
+
+# Convert a domain name (hostname) into a sequence of labels.
+#
+# A label is a single octet specifying the length followed by that many octets.
+#
+# A sequence ends with a null label, one where the length is zero.
+#
+# The first two bits of the length octet must be zero. This means 6 bits to
+# work with for the length which means each label must be [0, 63] in length.
+#
+# The entire sequence must be 255 octets or less.
+#
+# See RFC 1035 section 3.1.
+#
+# Returns the sequence as a binary string, or nil if error.
+def name_to_labels(name)
+	sequence = ""
+
+	name.split(".").each do |piece|
+		if piece.length > 63
+			puts "domain name piece is too long (#{piece.length})"
+			return nil
+		end
+
+		sequence += [piece.length, piece].pack("CA*")
+	end
+
+	# Null label.
+	sequence += [0].pack("C")
+
+	if sequence.length > 255
+		puts "domain name is too long (#{sequence.length})"
+		return nil
+	end
+
+	return sequence
 end
 
 # Take DNS message and parse it into its parts.
@@ -513,12 +570,10 @@ def print_message(msg)
 
 		puts "  QNAME: #{msg[:questions][i][:name]}"
 
-		# TODO(horgh): qtype is a superset of type
-		type_str = type_to_string(msg[:questions][i][:qtype])
+		type_str = qtype_to_string(msg[:questions][i][:qtype])
 		puts "  QTYPE: #{msg[:questions][i][:qtype]} (#{type_str})"
 
-		# TODO(horgh): qclass is a superset of class
-		class_str = class_to_string(msg[:questions][i][:qclass])
+		class_str = qclass_to_string(msg[:questions][i][:qclass])
 		puts "  QCLASS: #{msg[:questions][i][:qclass]} (#{class_str})"
 	end
 
@@ -552,6 +607,22 @@ def print_rrs(rrs)
 		puts "  RDLENGTH: #{rr[:rdlength]}"
 
 		puts "  RDATA: #{rr[:rdata]}"
+	end
+end
+
+# QTYPE to string
+def qtype_to_string(t)
+	case t
+	when 252
+		return "AXFR"
+	when 253
+		return "MAILB"
+	when 254
+		return "MAILA"
+	when 255
+		return "*"
+	else
+		return type_to_string(t)
 	end
 end
 
@@ -592,6 +663,16 @@ def type_to_string(t)
 		return "TXT"
 	else
 		return "unknown"
+	end
+end
+
+# QCLASS to string
+def qclass_to_string(c)
+	case c
+	when 255
+		return "*"
+	else
+		return class_to_string(c)
 	end
 end
 
