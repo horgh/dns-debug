@@ -113,6 +113,11 @@ def main
 	puts s
 
 	m = parse_message(msg)
+	if m.nil?
+		puts "unable to parse message"
+		return 0
+	end
+
 	print_message(m)
 
 
@@ -130,7 +135,14 @@ def main
 	puts s
 
 	m = parse_message(resp)
+	if m.nil?
+		puts "unable to parse message"
+		return 0
+	end
+
 	print_message(m)
+
+	return 1
 end
 
 # Retrieve command line arguments.
@@ -487,27 +499,31 @@ def print_message(msg)
 	end
 
 	puts "ANCOUNT: #{msg[:ancount]}"
-
-	for i in 0..msg[:ancount]-1
-		puts "Answer #{i}"
-
-		puts "  NAME: #{msg[:answers][i][:name]}"
-
-		type_str = type_to_string(msg[:answers][i][:type])
-		puts "  TYPE: #{msg[:answers][i][:type]} (#{type_str})"
-
-		class_str = class_to_string(msg[:answers][i][:class])
-		puts "  CLASS: #{msg[:answers][i][:class]} (#{class_str})"
-
-		puts "  TTL: #{msg[:answers][i][:ttl]}"
-
-		puts "  RDLENGTH: #{msg[:answers][i][:rdlength]}"
-
-		puts "  RDATA: #{msg[:answers][i][:rdata]}"
-	end
+	print_rrs(msg[:answers])
 
 	puts "NSCOUNT: #{msg[:nscount]}"
 	puts "ARCOUNT: #{msg[:arcount]}"
+end
+
+# Print out RR information.
+#
+# Provide this function with the hashes from parse_rrs().
+def print_rrs(rrs)
+	rrs.each do |rr|
+		puts "  NAME: #{rr[:name]}"
+
+		type_str = type_to_string(rr[:type])
+		puts "  TYPE: #{rr[:type]} (#{type_str})"
+
+		class_str = class_to_string(rr[:class])
+		puts "  CLASS: #{rr[:class]} (#{class_str})"
+
+		puts "  TTL: #{rr[:ttl]}"
+
+		puts "  RDLENGTH: #{rr[:rdlength]}"
+
+		puts "  RDATA: #{rr[:rdata]}"
+	end
 end
 
 # DNS TYPE to string.
