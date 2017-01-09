@@ -222,64 +222,14 @@ def parse_message(msg)
 
 	# Answer section.
 
-	parsed[:answers] = []
-
-	for i in 0..parsed[:ancount]-1
-		name, new_offset = labels_to_name(msg, offset)
-		if name.nil?
-			puts "unable to parse answer #{i} at offset #{offset}"
-			return nil
-		end
-
-		offset = new_offset
-
-		# Type (2 bytes), class (2 bytes), TTL (4 bytes), rdlength (2 bytes)
-		fields = msg[offset..offset+10-1].unpack('nnNn')
-
-		answer = {
-			name:     name,
-			type:     fields[0],
-			class:    fields[1],
-			ttl:      fields[2],
-			rdlength: fields[3],
-		}
-
-		offset += 10
-
-		# Rdata is variable length. Its form depends on the type and class.
-
-		# Type A and class IN means 4 octet RDATA.
-		if answer[:type] == 1 && answer[:class] == 1
-			answer[:rdata] = sprintf("%d.%d.%d.%d", msg.bytes[offset],
-															 msg.bytes[offset+1], msg.bytes[offset+2],
-															 msg.bytes[offset+3])
-			offset += 4
-			parsed[:answers] << answer
-			next
-		end
-
-		# NS
-		if answer[:type] == 2 && answer[:class] == 1
-			name, new_offset = labels_to_name(msg, offset)
-			if name.nil?
-				puts "unable to parse ns offset #{offset}"
-				return nil
-			end
-
-			offset = new_offset
-
-			answer[:rdata] = name
-			parsed[:answers] << answer
-			next
-		end
-
-		puts "rdata type not yet supported"
-		answer[:rdata] = nil
-
-		parsed[:answers] << answer
-
-		offset += answer[:rdlength]
+	answers, new_offset = parse_rrs(msg, offset, parsed[:ancount])
+	if answers.nil?
+		puts "unable to parse answers"
+		return nil
 	end
+
+	parsed[:answers] = answers
+	offset = new_offset
 
 
 	# TODO(horgh): authority/additional
@@ -365,6 +315,97 @@ def labels_to_name(msg, offset)
 		puts "invalid label prefix"
 		return nil
 	end
+end
+
+# Parse resource records. These are what make up
+# answers/authoritities/additionals sections.
+#
+# Return nil on error
+# Return [array of hashes, new offset] on success.
+def parse_rrs(msg, offset, count)
+	rrs = []
+
+	for i in 0..count-1
+		name, new_offset = labels_to_name(msg, offset)
+		if name.nil?
+			puts "unable to parse rr #{i} at offset #{offset}"
+			return nil
+		end
+
+		offset = new_offset
+
+		# Type (2 bytes), class (2 bytes), TTL (4 bytes), rdlength (2 bytes)
+
+		if offset+10-1 > msg.length-1
+			puts "malformed message. type/class/ttl/rdlength not found"
+			return nil
+		end
+
+		fields = msg[offset..offset+10-1].unpack('nnNn')
+
+		rr = {
+			name:     name,
+			type:     fields[0],
+			class:    fields[1],
+			ttl:      fields[2],
+			rdlength: fields[3],
+		}
+
+		offset += 10
+
+		# Rdata is variable length. Its form depends on the type and class.
+
+		# Type A and class IN means 4 octet RDATA.
+		if rr[:type] == 1 && rr[:class] == 1
+			if rr[:rdlength] != 4
+				puts "unexpected rdlength for IN A"
+				return nil
+			end
+
+			if offset+4-1 > msg.length-1
+				puts "message too short to contain rdata"
+				return nil
+			end
+
+			rr[:rdata] = sprintf("%d.%d.%d.%d", msg.bytes[offset],
+															 msg.bytes[offset+1], msg.bytes[offset+2],
+															 msg.bytes[offset+3])
+			offset += 4
+			rrs << rr
+			next
+		end
+
+		# NS
+		if rr[:type] == 2 && rr[:class] == 1
+			name, new_offset = labels_to_name(msg, offset)
+			if name.nil?
+				puts "unable to parse ns offset #{offset}"
+				return nil
+			end
+
+			offset = new_offset
+
+			rr[:rdata] = name
+			rrs << rr
+			next
+		end
+
+		# Not yet implemented.
+		puts "rdata type not yet supported. type: #{rr[:type]} class: #{rr[:class]}"
+
+		if offset+rr[:rdlength]-1 > msg.length-1
+			puts "message too short to contain rdata"
+			return nil
+		end
+
+		rr[:rdata] = nil
+
+		rrs << rr
+
+		offset += rr[:rdlength]
+	end
+
+	return rrs, offset
 end
 
 # Print out a parsed message.
