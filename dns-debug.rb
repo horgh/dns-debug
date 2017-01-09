@@ -468,11 +468,11 @@ def parse_rrs(msg, offset, count)
 			next
 		end
 
-		# NS
-		if rr[:type] == 2 && rr[:class] == 1
+		# Rdata with domain names. NS (2), CNAME (5).
+		if (rr[:type] == 2 || rr[:type] == 5) && rr[:class] == 1
 			name, new_offset = labels_to_name(msg, offset)
 			if name.nil?
-				puts "unable to parse ns offset #{offset}"
+				puts "unable to parse domain name. type: #{rr[:type]} offset: #{offset}"
 				return nil
 			end
 
