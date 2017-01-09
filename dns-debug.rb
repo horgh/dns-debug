@@ -180,6 +180,9 @@ end
 def parse_message(msg)
 	parsed = {}
 
+
+	# Header section.
+
 	# Header is a constant size. 12 bytes.
 	if msg.length < 12
 		puts "message is too short to contain a valid header"
@@ -244,7 +247,28 @@ def parse_message(msg)
 	offset = new_offset
 
 
-	# TODO(horgh): authority/additional
+	# Authority section.
+
+	authorities, new_offset = parse_rrs(msg, offset, parsed[:nscount])
+	if authorities.nil?
+		puts "unable to parse authorities/ns"
+		return nil
+	end
+
+	parsed[:authorities] = authorities
+	offset = new_offset
+
+
+	# Additional section.
+
+	additionals, new_offset = parse_rrs(msg, offset, parsed[:arcount])
+	if additionals.nil?
+		puts "unable to parse additionals"
+		return nil
+	end
+
+	parsed[:additionals] = additionals
+	offset = new_offset
 
 	return parsed
 end
@@ -502,7 +526,10 @@ def print_message(msg)
 	print_rrs(msg[:answers])
 
 	puts "NSCOUNT: #{msg[:nscount]}"
+	print_rrs(msg[:authorities])
+
 	puts "ARCOUNT: #{msg[:arcount]}"
+	print_rrs(msg[:additionals])
 end
 
 # Print out RR information.
@@ -510,6 +537,8 @@ end
 # Provide this function with the hashes from parse_rrs().
 def print_rrs(rrs)
 	rrs.each do |rr|
+		puts "RR:"
+
 		puts "  NAME: #{rr[:name]}"
 
 		type_str = type_to_string(rr[:type])
