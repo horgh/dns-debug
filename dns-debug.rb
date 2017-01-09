@@ -372,6 +372,11 @@ end
 def labels_to_name(msg, offset)
 	name = ""
 	while true
+		if offset > msg.length-1
+			puts "label length is outside of message"
+			return nil
+		end
+
 		length = msg.bytes[offset]
 		offset += 1
 
@@ -386,6 +391,11 @@ def labels_to_name(msg, offset)
 				return name, offset
 			end
 
+			if offset+length-1 > msg.length-1
+				puts "message is too short to contain the label"
+				return nil
+			end
+
 			name += msg[offset..offset+length-1] + "."
 			offset += length
 
@@ -393,7 +403,14 @@ def labels_to_name(msg, offset)
 		end
 
 		if length & 0xc0 == 0xc0
-			# Pointer is 2 octets. Drop the 11 on the first.
+			# Pointer is 2 octets.
+
+			if offset > msg.length-1
+				puts "message is too short to contain pointer"
+				return nil
+			end
+
+			# Drop the 11 on the first.
 			pointer = ((length & 0x3f) << 4) | msg.bytes[offset]
 			offset += 1
 
