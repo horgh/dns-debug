@@ -133,6 +133,7 @@ def main
 	print_message(m)
 end
 
+# Retrieve command line arguments.
 def get_args
 	args = {}
 
@@ -168,6 +169,11 @@ def parse_message(msg)
 	parsed = {}
 
 	# Header is a constant size. 12 bytes.
+	if msg.length < 12
+		puts "message is too short to contain a valid header"
+		return nil
+	end
+
 	hdr = msg[0..11].unpack('nCCnnnn')
 
 	# Bytes 0 and 1
@@ -198,34 +204,20 @@ def parse_message(msg)
 	parsed[:arcount] = hdr[6]
 
 
-	# Current byte offset in the message.
+	# Current byte offset in the message after we finish with the header.
 	offset = 12
 
 
 	# Question section
 
-	parsed[:questions] = []
-
-	for i in 0..parsed[:qdcount]-1
-		name, new_offset = labels_to_name(msg, offset)
-		if name.nil?
-			puts "unable to parse question #{i} at offset #{offset}"
-			return nil
-		end
-
-		offset = new_offset
-
-		# Take 4 bytes. They contain qtype and qclass.
-		q = msg[offset..offset+4-1].unpack('nn')
-
-		parsed[:questions] << {
-			name:   name,
-			qtype:  q[0],
-			qclass: q[1],
-		}
-
-		offset += 4
+	questions, new_offset = parse_questions(msg, offset, parsed[:qdcount])
+	if questions.nil?
+		puts "unable to parse questions"
+		return nil
 	end
+
+	parsed[:questions] = questions
+	offset = new_offset
 
 
 	# Answer section.
@@ -293,6 +285,41 @@ def parse_message(msg)
 	# TODO(horgh): authority/additional
 
 	return parsed
+end
+
+# Parse question section
+#
+# Returns nil if error, or [questions (array of hashes), new offset] on success
+def parse_questions(msg, offset, qdcount)
+	questions = []
+
+	for i in 0..qdcount-1
+		name, new_offset = labels_to_name(msg, offset)
+		if name.nil?
+			puts "unable to parse question #{i} at offset #{offset}"
+			return nil
+		end
+
+		offset = new_offset
+
+		if offset+4-1 > msg.length-1
+			puts "malformed message. qtype/qclass not found"
+			return nil
+		end
+
+		# Take 4 bytes. They contain qtype and qclass.
+		q = msg[offset..offset+4-1].unpack('nn')
+
+		questions << {
+			name:   name,
+			qtype:  q[0],
+			qclass: q[1],
+		}
+
+		offset += 4
+	end
+
+	return questions, offset
 end
 
 # Parse name at given offset.
