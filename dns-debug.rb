@@ -174,8 +174,12 @@ def query_and_output(hostname, id, verbose, server_ip, timeout, file)
 	n = send_with_timeout(sock, question_msg, timeout)
 	if n != question_msg.bytesize
 		puts "failed to write entire question message"
+		sock.shutdown(Socket::SHUT_RDWR)
+		sock.close
 		return false
 	end
+
+	sock.shutdown(Socket::SHUT_WR)
 
 	if verbose
 		puts "Sent #{n} bytes"
@@ -184,11 +188,16 @@ def query_and_output(hostname, id, verbose, server_ip, timeout, file)
 		puts "Receiving..."
 	end
 
-	resp = read_dns_message_with_timeout(sock, timeout)
+	resp = read_dns_message_with_timeout(sock, timeout, verbose)
 	if resp.nil?
 		puts "unable to read DNS message"
+		sock.shutdown(Socket::SHUT_RD)
+		sock.close
 		return false
 	end
+
+	sock.shutdown(Socket::SHUT_RD)
+	sock.close
 
 	if verbose
 		puts "Received #{resp.bytesize} bytes"
@@ -407,7 +416,7 @@ end
 #
 # Return the message's byte buffer if we successfully read a full message.
 # Return nil if failure.
-def read_dns_message_with_timeout(sock, timeout)
+def read_dns_message_with_timeout(sock, timeout, verbose)
 	# When using TCP, the server prefixes messages with two bytes telling the
 	# length of the message. Once we know how many bytes there are, ensure we
 	# read the entire message.
@@ -443,6 +452,10 @@ def read_dns_message_with_timeout(sock, timeout)
 		end
 
 		if !buf2.nil?
+			if verbose
+				puts "read #{buf2.bytesize} bytes"
+			end
+
 			buf += buf2
 		end
 
@@ -452,14 +465,20 @@ def read_dns_message_with_timeout(sock, timeout)
 			msg_size = pieces[0]
 		end
 
-		# Figure how how many more bytes we need to read. -2 because the two bytes
-		# indicating message size are not included.
-		have_msg_size = buf.bytesize-2
-		needed_size = msg_size-have_msg_size
+		if msg_size != -1
+			# Figure how how many more bytes we need to read. -2 because the two bytes
+			# indicating message size are not included.
+			have_msg_size = buf.bytesize-2
+			needed_size = msg_size-have_msg_size
 
-		if needed_size == 0
-			# Return without the length prefix. [2, bytesize)
-			return buf.byteslice(2...buf.bytesize)
+			if verbose
+				puts "have #{have_msg_size}/#{msg_size} bytes of msg. need #{needed_size} bytes"
+			end
+
+			if needed_size == 0
+				# Return without the length prefix. [2, bytesize)
+				return buf.byteslice(2...buf.bytesize)
+			end
 		end
 	end
 end
