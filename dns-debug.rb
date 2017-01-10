@@ -26,99 +26,13 @@ def main
 	end
 
 	id = 0
-	question = create_question(args[:hostname], id)
-	if question.nil?
-		puts "unable to create question"
+	if !query_and_output(args[:hostname], id, args[:verbose], args[:ip],
+			args[:timeout], args[:file])
 		return false
-	end
-
-
-	if args[:verbose]
-		puts "Sending question message:"
-	end
-
-	if args[:verbose]
-		print_bytes(question)
-	end
-
-	q = parse_message(question)
-	if q.nil?
-		puts "unable to parse message"
-		return false
-	end
-
-	if args[:verbose]
-		print_message(q)
-	end
-
-
-	# I am choosing to use TCP mainly because it appears in the problem case I am
-	# investigating TCP is in use.
-
-	if args[:verbose]
-		puts "Connecting..."
-	end
-
-	local_host = nil
-	local_port = nil
-	sock = Socket.tcp(args[:ip], 53, local_host, local_port,
-										{ connect_timeout: args[:timeout] })
-
-
-	if args[:verbose]
-		puts "Sending..."
-	end
-
-	# When using TCP we must prefix our message with 2 bytes indicating the length.
-	question_length = [question.bytesize].pack('n')
-	question_msg = question_length+question
-
-	n = send_with_timeout(sock, question_msg, args[:timeout])
-	if n != question_msg.bytesize
-		puts "failed to write entire question message"
-		return false
-	end
-
-	if args[:verbose]
-		puts "Sent #{n} bytes"
-		puts ""
-
-
-		puts "Receiving..."
-	end
-
-	resp = read_dns_message_with_timeout(sock, args[:timeout])
-	if resp.nil?
-		puts "unable to read DNS message"
-		return false
-	end
-
-	if args[:verbose]
-		puts "Received #{resp.bytesize} bytes"
-	end
-
-	puts "Received message:"
-
-	if args[:verbose]
-		print_bytes(resp)
-	end
-
-	r = parse_message(resp)
-	if r.nil?
-		puts "unable to parse message"
-		return false
-	end
-
-	print_message(r)
-
-	if args.has_key?(:file)
-		if !write_message_to_file(args[:file], resp)
-			puts "unable to write message to file #{args[:file]}"
-			return false
-		end
 	end
 
 	return true
+
 end
 
 # Retrieve command line arguments.
@@ -165,11 +79,112 @@ def get_args
 		args[:timeout] = 5
 	end
 
+	if !args.has_key?(:file)
+		args[:file] = nil
+	end
+
 	if !args.has_key?(:verbose)
 		args[:verbose] = false
 	end
 
 	return args
+end
+
+# Perform a DNS query. Receive the result and output it. Also write it to the
+# given file if one is provided.
+#
+# Return whether successful
+def query_and_output(hostname, id, verbose, server_ip, timeout, file)
+	question = create_question(hostname, id)
+	if question.nil?
+		puts "unable to create question"
+		return false
+	end
+
+
+	if verbose
+		puts "Sending question message:"
+
+		print_bytes(question)
+	end
+
+	q = parse_message(question)
+	if q.nil?
+		puts "unable to parse message"
+		return false
+	end
+
+	if verbose
+		print_message(q)
+	end
+
+
+	# I am choosing to use TCP mainly because it appears in the problem case I am
+	# investigating TCP is in use.
+
+	if verbose
+		puts "Connecting..."
+	end
+
+	local_host = nil
+	local_port = nil
+	sock = Socket.tcp(server_ip, 53, local_host, local_port,
+										{ connect_timeout: timeout })
+
+
+	if verbose
+		puts "Sending..."
+	end
+
+	# When using TCP we must prefix our message with 2 bytes indicating the length.
+	question_length = [question.bytesize].pack('n')
+	question_msg = question_length+question
+
+	n = send_with_timeout(sock, question_msg, timeout)
+	if n != question_msg.bytesize
+		puts "failed to write entire question message"
+		return false
+	end
+
+	if verbose
+		puts "Sent #{n} bytes"
+		puts ""
+
+		puts "Receiving..."
+	end
+
+	resp = read_dns_message_with_timeout(sock, timeout)
+	if resp.nil?
+		puts "unable to read DNS message"
+		return false
+	end
+
+	if verbose
+		puts "Received #{resp.bytesize} bytes"
+	end
+
+	puts "Received message:"
+
+	if verbose
+		print_bytes(resp)
+	end
+
+	r = parse_message(resp)
+	if r.nil?
+		puts "unable to parse message"
+		return false
+	end
+
+	print_message(r)
+
+	if !file.nil?
+		if !write_message_to_file(file, resp)
+			puts "unable to write message to file #{file}"
+			return false
+		end
+	end
+
+	return true
 end
 
 # Construct question message. See RFC 1035 section 4 for format.
