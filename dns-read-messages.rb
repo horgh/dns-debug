@@ -22,13 +22,6 @@ def main
 
 	fh.close
 
-	i = 0
-	msgs.each do |msg|
-		puts "Message #{i}:"
-		print_message(msg)
-		i += 1
-	end
-
 	return true
 end
 
@@ -87,7 +80,7 @@ def read_and_parse_messages(fh)
 		msg_unixtime = pieces[1]
 		msg_time = Time.at(msg_unixtime)
 
-		puts "Message @ #{msg_time} is #{msg_length} bytes"
+		puts "Message @ #{msg_time} is #{msg_length} bytes:"
 
 		msg_raw = fh.read(msg_length)
 		if msg_raw.nil?
@@ -105,6 +98,9 @@ def read_and_parse_messages(fh)
 			puts "unable to parse message"
 			return nil
 		end
+
+		print_message(r)
+		puts ""
 
 		msgs << r
 	end
