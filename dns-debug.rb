@@ -33,9 +33,13 @@ def main
 	end
 
 
-	puts "Sending question message:"
+	if args[:verbose]
+		puts "Sending question message:"
+	end
 
-	print_bytes(question)
+	if args[:verbose]
+		print_bytes(question)
+	end
 
 	q = parse_message(question)
 	if q.nil?
@@ -43,13 +47,17 @@ def main
 		return false
 	end
 
-	print_message(q)
+	if args[:verbose]
+		print_message(q)
+	end
 
 
 	# I am choosing to use TCP mainly because it appears in the problem case I am
 	# investigating TCP is in use.
 
-	puts "Connecting..."
+	if args[:verbose]
+		puts "Connecting..."
+	end
 
 	local_host = nil
 	local_port = nil
@@ -57,7 +65,9 @@ def main
 										{ connect_timeout: args[:timeout] })
 
 
-	puts "Sending..."
+	if args[:verbose]
+		puts "Sending..."
+	end
 
 	# When using TCP we must prefix our message with 2 bytes indicating the length.
 	question_length = [question.bytesize].pack('n')
@@ -69,11 +79,13 @@ def main
 		return false
 	end
 
-	puts "Sent #{n} bytes"
-	puts ""
+	if args[:verbose]
+		puts "Sent #{n} bytes"
+		puts ""
 
 
-	puts "Receiving..."
+		puts "Receiving..."
+	end
 
 	resp = read_dns_message_with_timeout(sock, args[:timeout])
 	if resp.nil?
@@ -81,12 +93,15 @@ def main
 		return false
 	end
 
-	puts "Received #{resp.bytesize} bytes"
-
+	if args[:verbose]
+		puts "Received #{resp.bytesize} bytes"
+	end
 
 	puts "Received message:"
 
-	print_bytes(resp)
+	if args[:verbose]
+		print_bytes(resp)
+	end
 
 	r = parse_message(resp)
 	if r.nil?
@@ -133,6 +148,10 @@ def get_args
 		opts.on("-f [FILE]", "--file [FILE]", "File to append raw DNS messages to.") do |o|
 			args[:file] = o
 		end
+
+		opts.on("-v", "--verbose", "Enable verbose output.") do |o|
+			args[:verbose] = true
+		end
 	end
 
 	opt.parse!
@@ -144,6 +163,10 @@ def get_args
 
 	if !args.has_key?(:timeout)
 		args[:timeout] = 5
+	end
+
+	if !args.has_key?(:verbose)
+		args[:verbose] = false
 	end
 
 	return args
