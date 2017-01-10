@@ -45,16 +45,42 @@ def main
 	print_message(q)
 
 
-	sock = UDPSocket.new
-	sock.connect args[:ip], 53
-	n = sock.send question, 0
+	# I am choosing to use TCP mainly because it appears in the problem case I am
+	# investigating TCP is in use.
+
+	puts "Connecting..."
+
+	local_host = nil
+	local_port = nil
+	sock = Socket.tcp(args[:ip], 53, local_host, local_port,
+										{ connect_timeout: args[:timeout] })
+
+
+	puts "Sending..."
+
+	# When using TCP we must prefix our message with 2 bytes indicating the length.
+	questionlength = [question.bytesize].pack('n')
+	question_msg = questionlength+question
+
+	n = send_with_timeout(sock, question_msg, args[:timeout])
+	if n != question_msg.bytesize
+		puts "failed to write entire question message"
+		return false
+	end
 
 	puts "Sent #{n} bytes"
 	puts ""
 
 
-	resp = sock.recv(1024)
-	puts "Received #{resp.length} bytes"
+	puts "Receiving..."
+
+	resp = read_dns_message_with_timeout(sock, args[:timeout])
+	if resp.nil?
+		puts "unable to read DNS message"
+		return false
+	end
+
+	puts "Received #{resp.bytesize} bytes"
 
 
 	puts "Received message:"
@@ -91,6 +117,10 @@ def get_args
 		opts.on("-nHOSTNAME", "--name=HOSTNAME", "Hostname to look up (A).") do |n|
 			args[:hostname] = n
 		end
+
+		opts.on("-t[TIMEOUT]", "--timeout[=TIMEOUT]", "Timeout for network related actions, in seconds. If not provided we use 5 seconds as the default.") do |t|
+			args[:timeout] = t.to_i
+		end
 	end
 
 	opt.parse!
@@ -98,6 +128,10 @@ def get_args
 	if !args.has_key?(:ip) || !args.has_key?(:hostname)
 		puts opt
 		return nil
+	end
+
+	if !args.has_key?(:timeout)
+		args[:timeout] = 5
 	end
 
 	return args
@@ -726,6 +760,102 @@ def class_to_string(c)
 		return "HS"
 	else
 		return "unknown"
+	end
+end
+
+# Try to send the entirety of the buffer. Use up to timeout seconds.
+#
+# Returns how many bytes we send.
+def send_with_timeout(sock, buf, timeout)
+	if timeout == 0
+		return 0
+	end
+
+	# Wait up to 1 second for socket to be writable.
+	rdy = IO.select([], [sock], [], 1)
+
+	# Socket isn't ready within 1 second. Try again. Decrease how long we are now
+	# willing to wait by 1 second.
+	if rdy == nil
+		return send_with_timeout(sock, buf, timeout-1)
+	end
+
+	# Try to write. May have a partial write.
+	begin
+		n = sock.write_nonblock buf
+	rescue
+	end
+
+	# Wrote it all? Then we're done.
+	if n == buf.bytesize
+		return n
+	end
+
+	# Try again to write whatever is left. Decrease how long we will wait by 1
+	# second.
+	newbuf = buf.byteslice(n...buf.bytesize)
+
+	return n+send_with_timeout(sock, newbuf, timeout-1)
+end
+
+# Try to read a full DNS message. Wait up to timeout seconds.
+#
+# Return the message's byte buffer if we successfully read a full message.
+# Return nil if failure.
+def read_dns_message_with_timeout(sock, timeout)
+	# When using TCP, the server prefixes messages with two bytes telling the
+	# length of the message. Once we know how many bytes there are, ensure we
+	# read the entire message.
+
+	buf = ""
+	# Start out trying to read 1024 bytes at a time. Once we know how large the
+	# message is, read only what we need.
+	needed_size = 1024
+	msg_size = -1
+
+	# Repeatedly try to read until we hit our timeout.
+	while true
+		if timeout == 0
+			puts "exceeded timeout reading message"
+			return nil
+		end
+
+		# Wait 1 second for readability.
+		rdy = IO.select([sock], nil, nil, 1)
+		if rdy == nil
+			timeout -= 1
+			next
+		end
+
+		# Something is there to read. Regardless, wait 1 less second next time.
+		timeout -= 1
+
+		# Read.
+		buf2 = ""
+		begin
+			sock.read_nonblock(needed_size, buf2)
+		rescue
+		end
+
+		if !buf2.nil?
+			buf += buf2
+		end
+
+		# Get message size from the first two bytes.
+		if msg_size == -1 && buf.bytesize >= 2
+			pieces = buf.unpack('n')
+			msg_size = pieces[0]
+		end
+
+		# Figure how how many more bytes we need to read. -2 because the two bytes
+		# indicating message size are not included.
+		have_msg_size = buf.bytesize-2
+		needed_size = msg_size-have_msg_size
+
+		if needed_size == 0
+			# Return without the length prefix.
+			return buf.byteslice(2...buf.bytesize)
+		end
 	end
 end
 
