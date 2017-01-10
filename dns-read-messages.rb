@@ -18,7 +18,7 @@ def main
 	mode = "rb"
 	fh = File.open(args[:file], mode)
 
-	msgs = read_and_parse_messages(fh)
+	msgs = read_and_parse_messages(fh, args[:only_failures])
 
 	fh.close
 
@@ -40,6 +40,10 @@ def get_args
 		opts.on("-f FILE", "--file FILE", "File containing messages.") do |o|
 			args[:file] = o
 		end
+
+		opts.on("-e", "--errors", "Filter to show messages that resulted in an error of some kind. This is when there is an RCODE that is not zero.") do |o|
+			args[:only_failures] = true
+		end
 	end
 
 	opt.parse!
@@ -47,6 +51,10 @@ def get_args
 	if !args.has_key?(:file)
 		puts opt
 		return nil
+	end
+
+	if !args.has_key?(:only_failures)
+		args[:only_failures] = false
 	end
 
 	return args
@@ -57,8 +65,11 @@ end
 # For the format of each message and the file itself, refer to dns-debug's
 # write_message_to_file function.
 #
+# We print out each message. If only_failures is true then we show only those
+# that have a non-zero RCODE.
+#
 # Returns an array of parsed messages (hashes), or nil if there is a failure.
-def read_and_parse_messages(fh)
+def read_and_parse_messages(fh, only_failures)
 	msgs = []
 
 	while true
@@ -80,8 +91,6 @@ def read_and_parse_messages(fh)
 		msg_unixtime = pieces[1]
 		msg_time = Time.at(msg_unixtime)
 
-		puts "Message @ #{msg_time} is #{msg_length} bytes:"
-
 		msg_raw = fh.read(msg_length)
 		if msg_raw.nil?
 			puts "unexpected EOF reading message"
@@ -98,6 +107,12 @@ def read_and_parse_messages(fh)
 			puts "unable to parse message"
 			return nil
 		end
+
+		if only_failures && r[:rcode] == 0
+			next
+		end
+
+		puts "Message @ #{msg_time} is #{msg_length} bytes:"
 
 		print_message(r)
 		puts ""
