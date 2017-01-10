@@ -25,10 +25,30 @@ def main
 		return false
 	end
 
+	i = 0
 	id = 0
-	if !query_and_output(args[:hostname], id, args[:verbose], args[:ip],
-			args[:timeout], args[:file])
-		return false
+
+	while true
+		# Give each request an id [0, 65536). This is the max the id my be. Loop
+		# around.
+		if id == 2**16
+			id = 0
+		end
+		id += 1
+
+		if !query_and_output(args[:hostname], id, args[:verbose], args[:ip],
+				args[:timeout], args[:file])
+			puts "query/output failure!"
+		end
+
+		# End or sleep before doing the next request.
+
+		i += 1
+		if args[:count] != -1 && i == args[:count]
+			break
+		end
+
+		sleep(1)
 	end
 
 	return true
@@ -66,6 +86,10 @@ def get_args
 		opts.on("-v", "--verbose", "Enable verbose output.") do |o|
 			args[:verbose] = true
 		end
+
+		opts.on("-c [COUNT]", "--count [COUNT]", "Number of requests to make before exiting. If not given, we make a single request. Provide 0 for no limit.") do |o|
+			args[:count] = o.to_i
+		end
 	end
 
 	opt.parse!
@@ -85,6 +109,10 @@ def get_args
 
 	if !args.has_key?(:verbose)
 		args[:verbose] = false
+	end
+
+	if !args.has_key?(:count)
+		args[:count] = 1
 	end
 
 	return args
@@ -366,7 +394,7 @@ def send_with_timeout(sock, buf, timeout)
 	end
 
 	# Try again to write whatever is left. Decrease how long we will wait by 1
-	# second.
+	# second. [n, bytesize)
 	newbuf = buf.byteslice(n...buf.bytesize)
 
 	return n+send_with_timeout(sock, newbuf, timeout-1)
@@ -427,7 +455,7 @@ def read_dns_message_with_timeout(sock, timeout)
 		needed_size = msg_size-have_msg_size
 
 		if needed_size == 0
-			# Return without the length prefix.
+			# Return without the length prefix. [2, bytesize)
 			return buf.byteslice(2...buf.bytesize)
 		end
 	end
