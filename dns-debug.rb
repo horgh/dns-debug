@@ -39,9 +39,13 @@ def main
 		end
 		id += 1
 
-		if !query_and_output(args[:hostname], id, args[:verbose], args[:ip],
-				args[:timeout], args[:file])
-			puts "query/output failure!"
+		begin
+			if !query_and_output(args[:hostname], id, args[:verbose], args[:ip],
+					args[:timeout], args[:file])
+				puts "query/output failure!"
+			end
+		rescue Exception => e
+			puts "query exception: #{e.message} #{e.backtrace.inspect}"
 		end
 
 		# End or sleep before doing the next request.
