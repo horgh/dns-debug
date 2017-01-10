@@ -96,6 +96,13 @@ def main
 
 	print_message(r)
 
+	if args.has_key?(:file)
+		if !write_message_to_file(args[:file], resp)
+			puts "unable to write message to file #{args[:file]}"
+			return false
+		end
+	end
+
 	return true
 end
 
@@ -111,16 +118,20 @@ def get_args
 			return nil
 		end
 
-		opts.on("-iIP", "--ip=IP", "IP of DNS server to query.") do |i|
+		opts.on("-i IP", "--ip IP", "IP of DNS server to query.") do |i|
 			args[:ip] = i
 		end
 
-		opts.on("-nHOSTNAME", "--name=HOSTNAME", "Hostname to look up (A).") do |n|
+		opts.on("-n HOSTNAME", "--name HOSTNAME", "Hostname to look up (A).") do |n|
 			args[:hostname] = n
 		end
 
-		opts.on("-t[TIMEOUT]", "--timeout[=TIMEOUT]", "Timeout for network related actions, in seconds. If not provided we use 5 seconds as the default.") do |t|
+		opts.on("-t [TIMEOUT]", "--timeout [TIMEOUT]", "Timeout for network related actions, in seconds. If not provided we use 5 seconds as the default.") do |t|
 			args[:timeout] = t.to_i
+		end
+
+		opts.on("-f [FILE]", "--file [FILE]", "File to append raw DNS messages to.") do |o|
+			args[:file] = o
 		end
 	end
 
@@ -382,6 +393,42 @@ def read_dns_message_with_timeout(sock, timeout)
 			return buf.byteslice(2...buf.bytesize)
 		end
 	end
+end
+
+# Write a DNS message to a given file.
+#
+# We write it in the raw message format as received from the server.
+#
+# This function appends to the file.
+#
+# Messages are written in this form:
+# <2 bytes, message length><4 bytes, unixtime><message>
+#
+# This is so the messages can be analyzed at a later date if necessary.
+#
+# Returns boolean true if successful, false if failure.
+def write_message_to_file(file, msg)
+	mode = "ab"
+	fh = File.open(file, mode)
+
+	msg_header = [msg.bytesize, Time.now.to_i].pack('nN')
+
+	n = fh.write(msg_header)
+	if n != msg_header.bytesize
+		puts "short write (header)"
+		fh.close
+		return false
+	end
+
+	n = fh.write(msg)
+	if n != msg.bytesize
+		puts "short write (msg)"
+		fh.close
+		return false
+	end
+
+	fh.close
+	return true
 end
 
 exit(main ? 0 : 1)

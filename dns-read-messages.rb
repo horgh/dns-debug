@@ -22,8 +22,11 @@ def main
 
 	fh.close
 
+	i = 0
 	msgs.each do |msg|
+		puts "Message #{i}:"
 		print_message(msg)
+		i += 1
 	end
 
 	return true
@@ -41,7 +44,7 @@ def get_args
 			return nil
 		end
 
-		opts.on("-fFILE", "--file=FILE", "File containing messages.") do |o|
+		opts.on("-f FILE", "--file FILE", "File containing messages.") do |o|
 			args[:file] = o
 		end
 	end
@@ -63,6 +66,50 @@ end
 #
 # Returns an array of parsed messages (hashes), or nil if there is a failure.
 def read_and_parse_messages(fh)
+	msgs = []
+
+	while true
+		header_raw = fh.read(6)
+
+		# EOF
+		if header_raw.nil?
+			break
+		end
+
+		if header_raw.bytesize != 6
+			puts "unable to read message header, short read"
+			return nil
+		end
+
+		pieces = header_raw.unpack('nN')
+
+		msg_length = pieces[0]
+		msg_unixtime = pieces[1]
+		msg_time = Time.at(msg_unixtime)
+
+		puts "Message @ #{msg_time} is #{msg_length} bytes"
+
+		msg_raw = fh.read(msg_length)
+		if msg_raw.nil?
+			puts "unexpected EOF reading message"
+			return nil
+		end
+
+		if msg_raw.bytesize != msg_length
+			puts "short read on message"
+			return nil
+		end
+
+		r = parse_message(msg_raw)
+		if r.nil?
+			puts "unable to parse message"
+			return nil
+		end
+
+		msgs << r
+	end
+
+	return msgs
 end
 
 exit(main ? 0 : 1)
