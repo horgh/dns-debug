@@ -59,8 +59,8 @@ def main
 	puts "Sending..."
 
 	# When using TCP we must prefix our message with 2 bytes indicating the length.
-	questionlength = [question.bytesize].pack('n')
-	question_msg = questionlength+question
+	question_length = [question.bytesize].pack('n')
+	question_msg = question_length+question
 
 	n = send_with_timeout(sock, question_msg, args[:timeout])
 	if n != question_msg.bytesize
@@ -261,19 +261,19 @@ def name_to_labels(name)
 	sequence = ""
 
 	name.split(".").each do |piece|
-		if piece.length > 63
-			puts "domain name piece is too long (#{piece.length})"
+		if piece.bytesize > 63
+			puts "domain name piece is too long (#{piece.bytesize} bytes)"
 			return nil
 		end
 
-		sequence += [piece.length, piece].pack("CA*")
+		sequence += [piece.bytesize, piece].pack("CA*")
 	end
 
 	# Null label.
 	sequence += [0].pack("C")
 
-	if sequence.length > 255
-		puts "domain name is too long (#{sequence.length})"
+	if sequence.bytesize > 255
+		puts "domain name is too long (#{sequence.length} bytes)"
 		return nil
 	end
 
@@ -295,7 +295,7 @@ def parse_message(msg)
 	# Header section.
 
 	# Header is a constant size. 12 bytes.
-	if msg.length < 12
+	if msg.bytesize < 12
 		puts "message is too short to contain a valid header"
 		return nil
 	end
@@ -399,13 +399,13 @@ def parse_questions(msg, offset, qdcount)
 
 		offset = new_offset
 
-		if offset+4-1 > msg.length-1
+		if offset+4-1 > msg.bytesize-1
 			puts "malformed message. qtype/qclass not found"
 			return nil
 		end
 
 		# Take 4 bytes. They contain qtype and qclass.
-		q = msg[offset..offset+4-1].unpack('nn')
+		q = msg.byteslice(offset...offset+4).unpack('nn')
 
 		questions << {
 			name:   name,
@@ -426,7 +426,7 @@ end
 def labels_to_name(msg, offset)
 	name = ""
 	while true
-		if offset > msg.length-1
+		if offset > msg.bytesize-1
 			puts "label length is outside of message"
 			return nil
 		end
@@ -445,12 +445,12 @@ def labels_to_name(msg, offset)
 				return name, offset
 			end
 
-			if offset+length-1 > msg.length-1
+			if offset+length-1 > msg.bytesize-1
 				puts "message is too short to contain the label"
 				return nil
 			end
 
-			name += msg[offset..offset+length-1] + "."
+			name += msg.byteslice(offset...offset+length) + "."
 			offset += length
 
 			next
@@ -459,7 +459,7 @@ def labels_to_name(msg, offset)
 		if length & 0xc0 == 0xc0
 			# Pointer is 2 octets.
 
-			if offset > msg.length-1
+			if offset > msg.bytesize-1
 				puts "message is too short to contain pointer"
 				return nil
 			end
@@ -500,12 +500,12 @@ def parse_rrs(msg, offset, count)
 
 		# Type (2 bytes), class (2 bytes), TTL (4 bytes), rdlength (2 bytes)
 
-		if offset+10-1 > msg.length-1
+		if offset+10-1 > msg.bytesize-1
 			puts "malformed message. type/class/ttl/rdlength not found"
 			return nil
 		end
 
-		fields = msg[offset..offset+10-1].unpack('nnNn')
+		fields = msg.byteslice(offset...offset+10).unpack('nnNn')
 
 		rr = {
 			name:     name,
@@ -526,14 +526,14 @@ def parse_rrs(msg, offset, count)
 				return nil
 			end
 
-			if offset+4-1 > msg.length-1
+			if offset+4-1 > msg.bytesize-1
 				puts "message too short to contain rdata"
 				return nil
 			end
 
 			rr[:rdata] = sprintf("%d.%d.%d.%d", msg.bytes[offset],
-															 msg.bytes[offset+1], msg.bytes[offset+2],
-															 msg.bytes[offset+3])
+													 msg.bytes[offset+1], msg.bytes[offset+2],
+													 msg.bytes[offset+3])
 			offset += 4
 			rrs << rr
 			next
@@ -557,7 +557,7 @@ def parse_rrs(msg, offset, count)
 		# Not yet implemented.
 		puts "rdata type not yet supported. type: #{rr[:type]} class: #{rr[:class]}"
 
-		if offset+rr[:rdlength]-1 > msg.length-1
+		if offset+rr[:rdlength]-1 > msg.bytesize-1
 			puts "message too short to contain rdata"
 			return nil
 		end
