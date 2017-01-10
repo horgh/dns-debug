@@ -20,6 +20,9 @@ require 'optparse'
 require 'socket'
 
 def main
+	# Auto flush stdout
+	$stdout.sync = true
+
 	args = get_args
 	if args.nil?
 		return false
