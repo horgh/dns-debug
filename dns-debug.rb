@@ -32,13 +32,6 @@ def main
 	id = 0
 
 	while true
-		# Give each request an id [0, 65536). This is the max the id my be. Loop
-		# around.
-		if id == 2**16
-			id = 0
-		end
-		id += 1
-
 		begin
 			if !query_and_output(args[:hostname], id, args[:verbose], args[:ip],
 					args[:timeout], args[:file])
@@ -48,11 +41,20 @@ def main
 			puts "query exception: Name: #{e.class} Message: #{e.message} Backtrace: #{e.backtrace.inspect}"
 		end
 
+		# Give each request an id [0, 65536). This is the max the id my be. Loop
+		# around.
+		id += 1
+		if id == 2**16
+			id = 0
+		end
+
 		# End or sleep before doing the next request.
 
-		i += 1
-		if args[:count] != -1 && i == args[:count]
-			break
+		if args[:count] != -1
+			i += 1
+			if i == args[:count]
+				break
+			end
 		end
 
 		sleep(1)
