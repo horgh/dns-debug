@@ -45,7 +45,7 @@ def main
 				puts "query/output failure!"
 			end
 		rescue Exception => e
-			puts "query exception: #{e.message} #{e.backtrace.inspect}"
+			puts "query exception: Name: #{e.class} Message: #{e.message} Backtrace: #{e.backtrace.inspect}"
 		end
 
 		# End or sleep before doing the next request.
